@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <signal.h>
 #include <unistd.h>
 
 
@@ -80,10 +81,15 @@ int main(int argc, char** argv)
 	struct sockaddr_in clnaddr;
 	socklen_t len;
 
+	printf("\n服务器运行中...\n");
+
 	while(1)
 	{	
 		int sock_conn; //连接套接字，用于和相应的客户端通信
 
+		struct timeval timeout={2,0};//设置链接套接字超时校验2S
+		setsockopt(sock_conn,SOL_SOCKET,SO_SNDTIMEO,(const char*)&timeout,sizeof(timeout));
+		setsockopt(sock_conn,SOL_SOCKET,SO_RCVTIMEO,(const char*)&timeout,sizeof(timeout));
 		len = sizeof(clnaddr);
 		sock_conn = accept(sock_listen, (struct sockaddr*)&clnaddr, &len);
 
@@ -93,6 +99,7 @@ int main(int argc, char** argv)
 			continue;
 		}
 
+		signal(SIGPIPE,SIG_IGN);
 		//接收客户端连接请求成功
 		printf("\n客户端%s:%d已经连接！\n", inet_ntoa(clnaddr.sin_addr), ntohs(clnaddr.sin_port));
 		
@@ -110,14 +117,16 @@ int main(int argc, char** argv)
 			perror("Open sended file fail");
 			exit(1);
 		}
-
+		printf("传输中....\n");
 		while(!feof(fp))
 		{
 			ret = fread(buff, 1, sizeof(buff), fp);
 			send(sock_conn, buff, ret, 0);
 		}
+		printf("传输结束!\n");
 		
 		fclose(fp);
+		printf("\n客户端%s:%d已经断开！\n", inet_ntoa(clnaddr.sin_addr), ntohs(clnaddr.sin_port));
 
 
 		close(sock_conn);	
