@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
 
@@ -19,8 +20,13 @@ typedef struct _file_info
 
 } file_info;
 
+
+
 #pragma pack()
 
+void* thr_send(void* arg);
+file_info fi;
+const char* file_path;
 
 int main(int argc, char** argv)
 {
@@ -44,7 +50,6 @@ int main(int argc, char** argv)
 	}
 
 
-	file_info fi;
 
 	fi.size = st.st_size;
 
@@ -55,7 +60,7 @@ int main(int argc, char** argv)
 	else
 		strcpy(fi.name, p + 1);
 	
-
+	file_path = argv[2];
 
 	int sock_listen;
 	sock_listen = socket(AF_INET, SOCK_STREAM, 0);
@@ -87,9 +92,9 @@ int main(int argc, char** argv)
 	{	
 		int sock_conn; //连接套接字，用于和相应的客户端通信
 
-		struct timeval timeout={2,0};//设置链接套接字超时校验2S
-		setsockopt(sock_conn,SOL_SOCKET,SO_SNDTIMEO,(const char*)&timeout,sizeof(timeout));
-		setsockopt(sock_conn,SOL_SOCKET,SO_RCVTIMEO,(const char*)&timeout,sizeof(timeout));
+		
+		signal(SIGPIPE,SIG_IGN);
+		
 		len = sizeof(clnaddr);
 		sock_conn = accept(sock_listen, (struct sockaddr*)&clnaddr, &len);
 
@@ -99,10 +104,38 @@ int main(int argc, char** argv)
 			continue;
 		}
 
-		signal(SIGPIPE,SIG_IGN);
+		pthread_t tid;
+		if(pthread_create(&tid,NULL,thr_send,(void*)(long)sock_conn))
+		{
+			perror("create new thread fail");
+			close(sock_conn);
+			continue;
+		}
+
+	}
+	
+	close(sock_listen);	
+	
+	return 0;
+	
+}
+
+void* thr_send(void* arg)
+{
+		int sock_conn = (long)arg;
+
+		pthread_detach(pthread_self());
+
+		struct sockaddr_in clnaddr;
+		socklen_t len = sizeof(clnaddr);
+		getpeername(sock_conn,(struct sockaddr*)&clnaddr,&len);
+
 		//接收客户端连接请求成功
 		printf("\n客户端%s:%d已经连接！\n", inet_ntoa(clnaddr.sin_addr), ntohs(clnaddr.sin_port));
 		
+		struct timeval timeout={2,0};//设置链接套接字超时校验2S
+		setsockopt(sock_conn,SOL_SOCKET,SO_SNDTIMEO,(const char*)&timeout,sizeof(timeout));
+		setsockopt(sock_conn,SOL_SOCKET,SO_RCVTIMEO,(const char*)&timeout,sizeof(timeout));
 		send(sock_conn, &fi, sizeof(fi), 0);	
 
 
@@ -110,7 +143,7 @@ int main(int argc, char** argv)
 		int ret;
 		char buff[1024];
 
-		fp = fopen(argv[2], "rb");	
+		fp = fopen(file_path, "rb");	
 
 		if(fp == NULL)
 		{
@@ -129,11 +162,5 @@ int main(int argc, char** argv)
 		printf("\n客户端%s:%d已经断开！\n", inet_ntoa(clnaddr.sin_addr), ntohs(clnaddr.sin_port));
 
 
-		close(sock_conn);	
-	}
-	
-	close(sock_listen);	
-	
-	return 0;
-	
+		close(sock_conn);
 }

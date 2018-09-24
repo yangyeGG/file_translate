@@ -57,7 +57,7 @@ int main(int argc,char** argv)
 		//	pthread_t tid;
 		//	pthread_create(&tid,NULL,fun,)
 			
-			system("clear");
+	//		system("clear");
 			ret = recv(sock,buff,1024,0);
 			file_out.write(buff,ret);
 			cnt+=ret;
